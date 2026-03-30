@@ -75,13 +75,18 @@ A tradeoff is that conflict detection runs across **all pets**, not just within 
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+AI was used throughout several phases of this project:
+
+- **Design brainstorming** — I asked the AI to identify core user actions and suggest which classes and relationships were needed. It proposed the four-class architecture (Pet, Owner, Task, Scheduler) and drafted the initial Mermaid diagram.
+- **Code generation** — Agent mode generated class skeletons from the UML, then fleshed out method implementations (sorting, filtering, conflict detection, recurring tasks).
+- **Code review** — After the skeleton was complete, I asked the AI to review `pawpal_system.py` for missing relationships and bottlenecks. It identified the loose string-based Pet–Task coupling and the lack of a feasibility check.
+- **Test generation** — The AI drafted the test suite and suggested edge cases (zero time budget, back-to-back tasks, cross-pet conflicts).
+
+The most helpful prompts were specific, file-scoped requests like "review `pawpal_system.py` for missing relationships" rather than broad questions. Asking for concrete edge cases was also more productive than asking generically "what should I test?"
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+When the AI reviewed the skeleton, it suggested changing `Task.pet_name` (a string) to a direct `Pet` object reference for stronger coupling. I chose **not** to accept this because the Streamlit UI collects pet names as text input, and converting back and forth between objects and strings would add complexity with little benefit for this project's scope. I verified my decision by confirming that the Scheduler already validates pet names against `owner.pets` during schedule generation, which catches orphaned tasks without requiring an object reference.
 
 ---
 
@@ -89,13 +94,25 @@ A tradeoff is that conflict detection runs across **all pets**, not just within 
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+The test suite (36 tests) covers these behaviors:
+
+- **Task completion** — `mark_complete()` changes status; completed tasks are excluded from schedules.
+- **Task addition** — Adding tasks increases a pet's count and auto-sets `pet_name`.
+- **Pet & Owner basics** — `summary()` formatting, `remove_pet()`, `all_tasks()` aggregation.
+- **Sorting** — `sort_by_time()` orders chronologically with unscheduled tasks last; `sort_by_priority()` ranks high > medium > low.
+- **Filtering** — Filter by pet name, completion status, category, and combined criteria.
+- **Recurring tasks** — Daily tasks advance by 1 day, weekly by 7 days, one-time tasks return None, attributes are preserved across recurrences.
+- **Conflict detection** — Overlapping tasks flagged, non-overlapping/back-to-back/unscheduled tasks clear, cross-pet conflicts detected, completed tasks ignored.
+- **Schedule generation** — Time budget respected, priority ordering, timed-before-flex, empty/zero-budget edge cases, explain_plan output.
+
+These tests are important because the scheduler is the core "brain" of the app — if sorting, filtering, or conflict detection is broken, the daily plan will be wrong and the user will lose trust in the tool.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+Confidence: **4/5 stars**. All 36 tests pass and cover the primary happy paths and edge cases. The remaining gap is integration testing with the Streamlit UI (ensuring session state round-trips work correctly) and stress testing with a large number of tasks. If I had more time, I would add tests for:
+- A pet with zero tasks going through the scheduler
+- Tasks that span midnight (e.g., 23:45 + 30 min)
+- Very large task lists (100+ tasks) to verify performance
 
 ---
 
@@ -103,12 +120,12 @@ A tradeoff is that conflict detection runs across **all pets**, not just within 
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The CLI-first workflow was the most satisfying part. By building and verifying all logic in `main.py` and `pytest` before touching the Streamlit UI, I caught design issues early (like the need for `sort_by_time()` and conflict detection) without fighting UI state. The Scheduler's `explain_plan()` method also turned out to be a surprisingly useful debugging tool — reading the plan explanation made it easy to spot when task ordering was wrong.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+If I had another iteration, I would redesign the conflict detection to suggest **resolutions** (e.g., "Move 'Feed' to 08:30 to avoid overlap") instead of only flagging the problem. I would also add a `ScheduleResult` dataclass that bundles the schedule, conflicts, and explanation together so the UI doesn't have to call three separate methods.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The most important lesson was that **AI is most effective when you give it a narrow, well-defined scope**. Broad prompts like "build me a scheduler" produced generic code, but specific prompts like "review this file for missing relationships" or "add edge case tests for conflict detection" produced targeted, high-quality output. As the lead architect, my job was to make the design decisions and break the work into focused chunks — the AI handled the implementation within those boundaries.

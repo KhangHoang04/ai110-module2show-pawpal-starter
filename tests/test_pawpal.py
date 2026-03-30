@@ -1,4 +1,4 @@
-"""Tests for PawPal+ core logic."""
+"""Tests for PawPal+ core logic — happy paths and edge cases."""
 
 from datetime import date, timedelta
 from pawpal_system import Owner, Pet, Task, Scheduler
@@ -24,6 +24,12 @@ class TestTaskCompletion:
         schedule = Scheduler(owner).generate_schedule()
         assert task not in schedule
 
+    def test_priority_value_mapping(self):
+        assert Task(title="t", duration_minutes=1, priority="high").priority_value() == 3
+        assert Task(title="t", duration_minutes=1, priority="medium").priority_value() == 2
+        assert Task(title="t", duration_minutes=1, priority="low").priority_value() == 1
+        assert Task(title="t", duration_minutes=1, priority="unknown").priority_value() == 0
+
 
 class TestTaskAddition:
     def test_add_task_increases_pet_task_count(self):
@@ -39,6 +45,37 @@ class TestTaskAddition:
         task = Task(title="Feed", duration_minutes=10)
         pet.add_task(task)
         assert task.pet_name == "Mochi"
+
+
+# --- Pet & Owner -----------------------------------------------------------
+
+class TestPetOwner:
+    def test_pet_summary_with_special_needs(self):
+        pet = Pet(name="Mochi", species="dog", age=3, special_needs=["joint supplement"])
+        assert "Mochi" in pet.summary()
+        assert "joint supplement" in pet.summary()
+
+    def test_pet_summary_without_special_needs(self):
+        pet = Pet(name="Luna", species="cat", age=2)
+        assert "needs" not in pet.summary()
+
+    def test_owner_remove_pet(self):
+        owner = Owner(name="Jo")
+        owner.add_pet(Pet(name="Rex", species="dog"))
+        owner.add_pet(Pet(name="Luna", species="cat"))
+        owner.remove_pet("Rex")
+        assert len(owner.pets) == 1
+        assert owner.pets[0].name == "Luna"
+
+    def test_owner_all_tasks_aggregates_across_pets(self):
+        owner = Owner(name="Jo")
+        dog = Pet(name="Rex", species="dog")
+        cat = Pet(name="Luna", species="cat")
+        owner.add_pet(dog)
+        owner.add_pet(cat)
+        dog.add_task(Task(title="Walk", duration_minutes=30))
+        cat.add_task(Task(title="Feed", duration_minutes=10))
+        assert len(owner.all_tasks()) == 2
 
 
 # --- Sorting ---------------------------------------------------------------
@@ -119,6 +156,17 @@ class TestFiltering:
         assert len(result) == 1
         assert result[0].title == "Walk"
 
+    def test_filter_combined_criteria(self):
+        owner = Owner(name="Jo")
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+        pet.add_task(Task(title="Walk", duration_minutes=30, category="walk"))
+        pet.add_task(Task(title="Feed", duration_minutes=10, category="feed"))
+
+        result = Scheduler(owner).filter_tasks(pet_name="Rex", category="feed")
+        assert len(result) == 1
+        assert result[0].title == "Feed"
+
 
 # --- Recurring tasks -------------------------------------------------------
 
@@ -150,6 +198,11 @@ class TestRecurring:
         next_task = task.mark_complete()
         assert next_task is None
 
+    def test_recurring_without_due_date_returns_none(self):
+        task = Task(title="Walk", duration_minutes=30, frequency="daily")
+        next_task = task.mark_complete()
+        assert next_task is None
+
     def test_scheduler_complete_task_adds_next_to_list(self):
         owner = Owner(name="Jo")
         pet = Pet(name="Rex", species="dog")
@@ -165,6 +218,20 @@ class TestRecurring:
         assert len(scheduler.tasks) == 2
         assert len(pet.tasks) == 2
 
+    def test_next_occurrence_preserves_attributes(self):
+        task = Task(
+            title="Walk", duration_minutes=30, priority="high",
+            category="walk", pet_name="Rex", scheduled_time="07:00",
+            frequency="daily", due_date=date.today(),
+        )
+        next_task = task.mark_complete()
+        assert next_task is not None
+        assert next_task.title == "Walk"
+        assert next_task.priority == "high"
+        assert next_task.category == "walk"
+        assert next_task.pet_name == "Rex"
+        assert next_task.scheduled_time == "07:00"
+
 
 # --- Conflict detection ----------------------------------------------------
 
@@ -173,14 +240,8 @@ class TestConflictDetection:
         owner = Owner(name="Jo")
         pet = Pet(name="Rex", species="dog")
         owner.add_pet(pet)
-        pet.add_task(Task(
-            title="Walk", duration_minutes=30,
-            scheduled_time="08:00",
-        ))
-        pet.add_task(Task(
-            title="Feed", duration_minutes=15,
-            scheduled_time="08:15",
-        ))
+        pet.add_task(Task(title="Walk", duration_minutes=30, scheduled_time="08:00"))
+        pet.add_task(Task(title="Feed", duration_minutes=15, scheduled_time="08:15"))
 
         warnings = Scheduler(owner).detect_conflicts()
         assert len(warnings) == 1
@@ -191,14 +252,8 @@ class TestConflictDetection:
         owner = Owner(name="Jo")
         pet = Pet(name="Rex", species="dog")
         owner.add_pet(pet)
-        pet.add_task(Task(
-            title="Walk", duration_minutes=30,
-            scheduled_time="08:00",
-        ))
-        pet.add_task(Task(
-            title="Feed", duration_minutes=15,
-            scheduled_time="09:00",
-        ))
+        pet.add_task(Task(title="Walk", duration_minutes=30, scheduled_time="08:00"))
+        pet.add_task(Task(title="Feed", duration_minutes=15, scheduled_time="09:00"))
 
         warnings = Scheduler(owner).detect_conflicts()
         assert len(warnings) == 0
@@ -209,6 +264,51 @@ class TestConflictDetection:
         owner.add_pet(pet)
         pet.add_task(Task(title="Walk", duration_minutes=30))
         pet.add_task(Task(title="Feed", duration_minutes=15))
+
+        warnings = Scheduler(owner).detect_conflicts()
+        assert len(warnings) == 0
+
+    def test_back_to_back_tasks_no_conflict(self):
+        owner = Owner(name="Jo")
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+        pet.add_task(Task(title="Walk", duration_minutes=30, scheduled_time="08:00"))
+        pet.add_task(Task(title="Feed", duration_minutes=15, scheduled_time="08:30"))
+
+        warnings = Scheduler(owner).detect_conflicts()
+        assert len(warnings) == 0
+
+    def test_exact_same_time_is_conflict(self):
+        owner = Owner(name="Jo")
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+        pet.add_task(Task(title="Walk", duration_minutes=30, scheduled_time="08:00"))
+        pet.add_task(Task(title="Feed", duration_minutes=15, scheduled_time="08:00"))
+
+        warnings = Scheduler(owner).detect_conflicts()
+        assert len(warnings) == 1
+
+    def test_cross_pet_conflict_detected(self):
+        owner = Owner(name="Jo")
+        dog = Pet(name="Rex", species="dog")
+        cat = Pet(name="Luna", species="cat")
+        owner.add_pet(dog)
+        owner.add_pet(cat)
+        dog.add_task(Task(title="Walk Rex", duration_minutes=30, scheduled_time="08:00"))
+        cat.add_task(Task(title="Feed Luna", duration_minutes=15, scheduled_time="08:10"))
+
+        warnings = Scheduler(owner).detect_conflicts()
+        assert len(warnings) == 1
+
+    def test_completed_tasks_ignored_in_conflict_check(self):
+        owner = Owner(name="Jo")
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+        t1 = Task(title="Walk", duration_minutes=30, scheduled_time="08:00")
+        t2 = Task(title="Feed", duration_minutes=15, scheduled_time="08:10")
+        t1.completed = True
+        pet.add_task(t1)
+        pet.add_task(t2)
 
         warnings = Scheduler(owner).detect_conflicts()
         assert len(warnings) == 0
@@ -248,3 +348,44 @@ class TestScheduler:
 
         schedule = Scheduler(owner).generate_schedule()
         assert schedule[0].title == "Timed"
+
+    def test_empty_schedule_when_no_tasks(self):
+        owner = Owner(name="Jo", available_minutes=60)
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+
+        scheduler = Scheduler(owner)
+        schedule = scheduler.generate_schedule()
+        assert schedule == []
+        assert "No tasks" in scheduler.explain_plan(schedule)
+
+    def test_zero_time_budget_schedules_nothing(self):
+        owner = Owner(name="Jo", available_minutes=0)
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+        pet.add_task(Task(title="Walk", duration_minutes=10))
+
+        schedule = Scheduler(owner).generate_schedule()
+        assert schedule == []
+
+    def test_task_exactly_fills_budget(self):
+        owner = Owner(name="Jo", available_minutes=30)
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+        pet.add_task(Task(title="Walk", duration_minutes=30))
+
+        schedule = Scheduler(owner).generate_schedule()
+        assert len(schedule) == 1
+
+    def test_explain_plan_lists_skipped_tasks(self):
+        owner = Owner(name="Jo", available_minutes=20)
+        pet = Pet(name="Rex", species="dog")
+        owner.add_pet(pet)
+        pet.add_task(Task(title="Walk", duration_minutes=30, priority="high"))
+        pet.add_task(Task(title="Feed", duration_minutes=10, priority="medium"))
+
+        scheduler = Scheduler(owner)
+        schedule = scheduler.generate_schedule()
+        explanation = scheduler.explain_plan(schedule)
+        assert "Skipped" in explanation
+        assert "Walk" in explanation

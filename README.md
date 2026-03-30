@@ -22,6 +22,17 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Features
+
+- **Owner & Pet management** — Register multiple pets with name, species, age, and special needs
+- **Task creation** — Add care tasks with duration, priority, category, scheduled time, and recurrence
+- **Smart scheduling** — Generates a daily plan: timed tasks first (by clock), then flexible tasks by priority, within the owner's time budget
+- **Sorting** — Sort tasks chronologically or by priority
+- **Filtering** — Filter by pet, completion status, or category
+- **Recurring tasks** — Daily/weekly tasks auto-generate the next occurrence when completed
+- **Conflict detection** — Warns when task time ranges overlap (including across pets)
+- **Plan explanation** — The scheduler explains why tasks are ordered the way they are and which were skipped
+
 ## Smarter Scheduling
 
 PawPal+ includes several algorithmic features beyond basic task listing:
@@ -32,6 +43,28 @@ PawPal+ includes several algorithmic features beyond basic task listing:
 - **Recurring tasks** — Daily and weekly tasks automatically generate their next occurrence when marked complete, using `timedelta` for accurate date math.
 - **Conflict detection** — The scheduler scans for overlapping time ranges and returns human-readable warnings instead of crashing.
 - **Smart schedule generation** — Time-slotted tasks are placed first (by clock time), then flexible tasks fill remaining time by priority, all within the owner's daily time budget.
+
+## Testing PawPal+
+
+Run the full test suite with:
+
+```bash
+python -m pytest tests/ -v
+```
+
+The suite includes **36 tests** covering:
+
+| Area | What's tested |
+|------|---------------|
+| Task basics | Completion, priority mapping |
+| Pet & Owner | Summaries, add/remove pets, task aggregation |
+| Sorting | Chronological order, priority order, unscheduled-last |
+| Filtering | By pet, status, category, combined criteria |
+| Recurring tasks | Daily/weekly recurrence, attribute preservation, one-time tasks |
+| Conflict detection | Overlapping ranges, back-to-back, cross-pet, completed-task exclusion |
+| Schedule generation | Time budget, priority ordering, timed-before-flex, edge cases |
+
+**Confidence level: 4/5** — All tests pass; remaining gap is Streamlit integration and midnight-spanning tasks.
 
 ## Getting started
 
