@@ -55,13 +55,19 @@ These observations are noted for the implementation phase. The current skeleton 
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers three main constraints:
+
+1. **Time budget** — The owner's `available_minutes` acts as a hard cap. Tasks are added to the schedule greedily until the budget is exhausted; any that don't fit are skipped.
+2. **Priority** — Tasks with `scheduled_time` values are placed first (sorted by clock time), then remaining flexible tasks are filled in by priority (high > medium > low). This means a high-priority timed task at 08:00 always appears before a high-priority flexible task.
+3. **Conflict avoidance** — The scheduler checks for overlapping time slots and warns the user rather than silently double-booking a pet.
+
+Priority and time budget were chosen as the two most important constraints because a pet owner's day is fundamentally limited by how much free time they have, and some tasks (medication, feeding) are non-negotiable compared to enrichment activities.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The conflict detection algorithm checks for **overlapping time ranges** (start-to-end), not just exact start-time matches. This is more accurate but means two tasks that are back-to-back (e.g., one ending at 08:30 and another starting at 08:30) are not flagged — which is the intended behavior since they don't actually overlap.
+
+A tradeoff is that conflict detection runs across **all pets**, not just within a single pet. Two tasks for different pets at the same time are flagged as conflicts even though, in theory, an owner could multitask (e.g., feed the cat while the dog eats). This is reasonable because the system models a single owner who must actively perform each task, so overlapping schedules represent a real constraint for most users.
 
 ---
 
