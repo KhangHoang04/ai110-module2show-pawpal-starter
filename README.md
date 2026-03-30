@@ -22,6 +22,15 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Demo
+
+<!-- TODO: Replace with your actual screenshot after running `streamlit run app.py` -->
+<a href="demo_screenshot.png" target="_blank"><img src='demo_screenshot.png' title='PawPal App' width='' alt='PawPal App' /></a>
+
+### System Architecture
+
+<a href="uml_final.png" target="_blank"><img src='uml_final.png' title='PawPal+ UML Diagram' width='' alt='PawPal+ Class Diagram' /></a>
+
 ## Features
 
 - **Owner & Pet management** — Register multiple pets with name, species, age, and special needs
